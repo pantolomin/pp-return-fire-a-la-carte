@@ -262,17 +262,6 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             }
         }
 
-        public bool Pre_PlayAction(TacticalAbility __instance, Func<PlayingAction, IEnumerator<NextUpdate>> action, object parameter)
-        {
-            TacticalAbilityTarget tacticalAbilityTarget = parameter as TacticalAbilityTarget;
-            if (tacticalAbilityTarget != null && tacticalAbilityTarget.AttackType == AttackType.ReturnFire)
-            {
-                FileLog.Log(string.Concat("ReturnFire -> Skip PlayAction"));
-                return false;
-            }
-            return true;
-        }
-
         private static bool isAngleOK(TacticalActor shooter, TacticalActorBase target)
         {
             Vector3 targetForward = target.transform.TransformDirection(Vector3.forward);
