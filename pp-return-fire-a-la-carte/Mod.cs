@@ -26,24 +26,32 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
 
         private const string ShotLimit = "ShotLimit";
         private static int shotLimit;
+        private static Dictionary<TacticalActor, int> returnFireCounter = new Dictionary<TacticalActor, int>();
+
         private const string PerceptionRatio = "PerceptionRatio";
         private static float perceptionRatio;
+
         private const string AllowBashRiposte = "AllowBashRiposte";
         private static bool allowBashRiposte;
+
         private const string TargetCanRetaliate = "TargetCanRetaliate";
         private static bool targetCanRetaliate;
+
         private const string CasualtiesCanRetaliate = "CasualtiesCanRetaliate";
         private static bool casualtiesCanRetaliate;
+
         private const string BystandersCanRetaliate = "BystandersCanRetaliate";
         private static bool bystandersCanRetaliate;
+
         private const string CheckFriendlyFire = "CheckFriendlyFire";
         private static bool checkFriendlyFire;
+
         private const string ReactionAngle = "ReactionAngle";
         private static bool checkReactionAngle;
         private static float reactionAngleCos;
+
         private const string AllowReturnToCover = "AllowReturnToCover";
         private static bool allowReturnToCover;
-
 
         public static void Init()
         {
@@ -70,6 +78,11 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             }
 
             shotLimit = getValue(rfProperties, ShotLimit, int.Parse, 1);
+            if (shotLimit < 0)
+            {
+                FileLog.Log(string.Concat("Wrong limit for shots (", perceptionRatio, ") - should be positive or 0"));
+                shotLimit = 1;
+            }
             perceptionRatio = getValue(rfProperties, PerceptionRatio, float.Parse, 0.5f);
             if (perceptionRatio < 0f)
             {
@@ -92,10 +105,15 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             allowReturnToCover = getValue(rfProperties, AllowReturnToCover, bool.Parse, true);
 
             HarmonyInstance harmonyInstance = HarmonyInstance.Create(typeof(Mod).Namespace);
+            if (shotLimit > 0)
+            {
+                Mod.Patch(harmonyInstance, typeof(TacticalFaction), "PlayTurnCrt", null, "Pre_PlayTurnCrt");
+                Mod.Patch(harmonyInstance, typeof(TacticalLevelController), "FireWeaponAtTargetCrt", null, "Pre_FireWeaponAtTargetCrt");
+            }
             Mod.Patch(harmonyInstance, typeof(TacticalLevelController), "GetReturnFireAbilities", null, "Pre_GetReturnFireAbilities");
             if (allowReturnToCover)
             {
-                Mod.Patch(harmonyInstance, typeof(TacticalAbility), "PlayAction", null, "Pre_PlayAction");
+                // What to do ?
             }
         }
 
@@ -105,15 +123,12 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
         // ******************************************************************************************************************
         // ******************************************************************************************************************
 
-        public bool Pre_PlayAction(TacticalAbility __instance, Func<PlayingAction, IEnumerator<NextUpdate>> action, object parameter)
+        public static void Pre_PlayTurnCrt(TacticalFaction __instance)
         {
-            TacticalAbilityTarget tacticalAbilityTarget = parameter as TacticalAbilityTarget;
-            if (tacticalAbilityTarget != null && tacticalAbilityTarget.AttackType == AttackType.ReturnFire)
-            {
-                FileLog.Log(string.Concat("ReturnFire -> Skip PlayAction"));
-                return false;
-            }
-            return true;
+            // Keep in the map only the actors not belonging to the faction that is starting its turn
+            returnFireCounter = returnFireCounter
+                .Where(actor => actor.Key.TacticalFaction != __instance)
+                .ToDictionary(actor => actor.Key, actor => actor.Value);
         }
 
         public static bool Pre_GetReturnFireAbilities(
@@ -169,6 +184,16 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
                     .OrderByDescending((actorAbilities) => actorAbilities.actorAbility.TacticalActor == target.GetTargetActor())
                     .Select((actorAbilities) => actorAbilities.actorAbility)
                     .Where((ReturnFireAbility returnFireAbility) => {
+                        TacticalActor tacticalActor = returnFireAbility.TacticalActor;
+                        // Check that he has not retaliated too much already
+                        if (shotLimit > 0)
+                        {
+                            returnFireCounter.TryGetValue(tacticalActor, out var currentCount);
+                            if (currentCount >= shotLimit)
+                            {
+                                return false;
+                            }
+                        }
                         // Always allow bash riposte
                         if (returnFireAbility.ReturnFireDef.RiposteWithBashAbility)
                         {
@@ -176,7 +201,6 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
                         }
                         // Checks if the target is allowed to retaliate
                         // Rmq: Skipped when doing predictions on who will return fire (getOnlyPossibleTargets == false)
-                        TacticalActor tacticalActor = returnFireAbility.TacticalActor;
                         if (getOnlyPossibleTargets)
                         {
                             if (target.Actor == tacticalActor
@@ -225,6 +249,27 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             }
             __result = list;
             return false;
+        }
+
+        public static void Pre_FireWeaponAtTargetCrt(Weapon weapon, TacticalAbilityTarget abilityTarget)
+        {
+            if (abilityTarget.AttackType == AttackType.ReturnFire)
+            {
+                TacticalActor tacticalActor = weapon.TacticalActor;
+                returnFireCounter.TryGetValue(tacticalActor, out var currentCount);
+                returnFireCounter[tacticalActor] = currentCount + 1;
+            }
+        }
+
+        public bool Pre_PlayAction(TacticalAbility __instance, Func<PlayingAction, IEnumerator<NextUpdate>> action, object parameter)
+        {
+            TacticalAbilityTarget tacticalAbilityTarget = parameter as TacticalAbilityTarget;
+            if (tacticalAbilityTarget != null && tacticalAbilityTarget.AttackType == AttackType.ReturnFire)
+            {
+                FileLog.Log(string.Concat("ReturnFire -> Skip PlayAction"));
+                return false;
+            }
+            return true;
         }
 
         private static bool isAngleOK(TacticalActor shooter, TacticalActorBase target)
