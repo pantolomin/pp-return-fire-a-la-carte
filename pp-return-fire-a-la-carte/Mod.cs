@@ -1,4 +1,6 @@
-﻿using Base.Utils.Maths;
+﻿using Base.Core;
+using Base.Entities;
+using Base.Utils.Maths;
 using Harmony;
 using PhoenixPoint.Common.Core;
 using PhoenixPoint.Common.Entities;
@@ -6,6 +8,7 @@ using PhoenixPoint.Tactical.Entities;
 using PhoenixPoint.Tactical.Entities.Abilities;
 using PhoenixPoint.Tactical.Entities.Weapons;
 using PhoenixPoint.Tactical.Levels;
+using PhoenixPoint.Tactical.Levels.PathProcessors;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -13,6 +16,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
+using UnityEngine;
 
 namespace pantolomin.phoenixPoint.mod.ppReturnFire
 {
@@ -20,8 +24,26 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
     {
         private const string FILE_NAME = "Mods/pp-return-fire-a-la-carte.properties";
 
+        private const string ShotLimit = "ShotLimit";
+        private static int shotLimit;
         private const string PerceptionRatio = "PerceptionRatio";
         private static float perceptionRatio;
+        private const string AllowBashRiposte = "AllowBashRiposte";
+        private static bool allowBashRiposte;
+        private const string TargetCanRetaliate = "TargetCanRetaliate";
+        private static bool targetCanRetaliate;
+        private const string CasualtiesCanRetaliate = "CasualtiesCanRetaliate";
+        private static bool casualtiesCanRetaliate;
+        private const string BystandersCanRetaliate = "BystandersCanRetaliate";
+        private static bool bystandersCanRetaliate;
+        private const string CheckFriendlyFire = "CheckFriendlyFire";
+        private static bool checkFriendlyFire;
+        private const string ReactionAngle = "ReactionAngle";
+        private static bool checkReactionAngle;
+        private static float reactionAngleCos;
+        private const string AllowReturnToCover = "AllowReturnToCover";
+        private static bool allowReturnToCover;
+
 
         public static void Init()
         {
@@ -46,9 +68,35 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             {
                 FileLog.Log(string.Concat("Failed to read the configuration file (", FILE_NAME, "):", e.ToString()));
             }
+
+            shotLimit = getValue(rfProperties, ShotLimit, int.Parse, 1);
             perceptionRatio = getValue(rfProperties, PerceptionRatio, float.Parse, 0.5f);
+            if (perceptionRatio < 0f)
+            {
+                FileLog.Log(string.Concat("Wrong perception ratio provided (", perceptionRatio, ") - should be positive or 0"));
+                perceptionRatio = 0.5f;
+            }
+            allowBashRiposte = getValue(rfProperties, AllowBashRiposte, bool.Parse, true);
+            targetCanRetaliate = getValue(rfProperties, TargetCanRetaliate, bool.Parse, true);
+            casualtiesCanRetaliate = getValue(rfProperties, CasualtiesCanRetaliate, bool.Parse, true);
+            bystandersCanRetaliate = getValue(rfProperties, BystandersCanRetaliate, bool.Parse, false);
+            checkFriendlyFire = getValue(rfProperties, CheckFriendlyFire, bool.Parse, true);
+            int reactionAngle = getValue(rfProperties, ReactionAngle, int.Parse, 360);
+            if (reactionAngle < 0 || reactionAngle > 360)
+            {
+                FileLog.Log(string.Concat("Wrong angle provided for return fire (", reactionAngle, ") - should be between 0 and 360"));
+                reactionAngle = 90;
+            }
+            checkReactionAngle = reactionAngle < 360;
+            reactionAngleCos = (float) Math.Cos(reactionAngle * Math.PI / 180d / 2d);
+            allowReturnToCover = getValue(rfProperties, AllowReturnToCover, bool.Parse, true);
+
             HarmonyInstance harmonyInstance = HarmonyInstance.Create(typeof(Mod).Namespace);
-            Mod.Patch(harmonyInstance, typeof(TacticalLevelController), "GetReturnFireAbilities", null, null, "Pre_GetReturnFireAbilities");
+            Mod.Patch(harmonyInstance, typeof(TacticalLevelController), "GetReturnFireAbilities", null, "Pre_GetReturnFireAbilities");
+            if (allowReturnToCover)
+            {
+                Mod.Patch(harmonyInstance, typeof(TacticalAbility), "PlayAction", null, "Pre_PlayAction");
+            }
         }
 
         // ******************************************************************************************************************
@@ -56,6 +104,17 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
         // Patched methods
         // ******************************************************************************************************************
         // ******************************************************************************************************************
+
+        public bool Pre_PlayAction(TacticalAbility __instance, Func<PlayingAction, IEnumerator<NextUpdate>> action, object parameter)
+        {
+            TacticalAbilityTarget tacticalAbilityTarget = parameter as TacticalAbilityTarget;
+            if (tacticalAbilityTarget != null && tacticalAbilityTarget.AttackType == AttackType.ReturnFire)
+            {
+                FileLog.Log(string.Concat("ReturnFire -> Skip PlayAction"));
+                return false;
+            }
+            return true;
+        }
 
         public static bool Pre_GetReturnFireAbilities(
             TacticalLevelController __instance,
@@ -85,7 +144,7 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             {
                 list = actors
                     // Get alive enemies for the shooter
-                    .Where<TacticalActor>((TacticalActor actor) => {
+                    .Where((TacticalActor actor) => {
                         return actor.IsAlive && actor.RelationTo(shooter) == FactionRelation.Enemy;
                     })
                     // Select the ones that have the return fire ability, ordered by priority
@@ -104,25 +163,41 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
                     // Group by actor and keep only first valid ability
                     .GroupBy((actorAbilities) => actorAbilities.actor, (actorAbilities) => actorAbilities.ability)
                     .Select((IGrouping<TacticalActor, ReturnFireAbility> actorAbilities) => 
-                        new { actorReturns = actorAbilities, actorAbility = actorAbilities.First<ReturnFireAbility>() }
+                        new { actorReturns = actorAbilities, actorAbility = actorAbilities.First() }
                     )
                     // Make sure the target of the attack is the first one to retaliate
                     .OrderByDescending((actorAbilities) => actorAbilities.actorAbility.TacticalActor == target.GetTargetActor())
                     .Select((actorAbilities) => actorAbilities.actorAbility)
-                    .Where<ReturnFireAbility>((ReturnFireAbility returnFireAbility) => {
+                    .Where((ReturnFireAbility returnFireAbility) => {
                         // Always allow bash riposte
                         if (returnFireAbility.ReturnFireDef.RiposteWithBashAbility)
                         {
-                            return true;
+                            return allowBashRiposte;
                         }
-                        // ?????????????????????
+                        // Checks if the target is allowed to retaliate
+                        // Rmq: Skipped when doing predictions on who will return fire (getOnlyPossibleTargets == false)
                         TacticalActor tacticalActor = returnFireAbility.TacticalActor;
-                        if (getOnlyPossibleTargets 
-                            && target.Actor != tacticalActor 
-                            && (target.MultiAbilityTargets == null || !target.MultiAbilityTargets.Any<TacticalAbilityTarget>((TacticalAbilityTarget mat) => mat.Actor == tacticalActor)) && (casualties == null || !casualties.Contains(tacticalActor)))
+                        if (getOnlyPossibleTargets)
+                        {
+                            if (target.Actor == tacticalActor
+                                || target.MultiAbilityTargets != null && target.MultiAbilityTargets.Any((TacticalAbilityTarget mat) => mat.Actor == tacticalActor))
+                            {
+                                // The actor was one of the targets
+                                if (!targetCanRetaliate) return false;
+                            } else if (casualties != null && casualties.Contains(tacticalActor))
+                            {
+                                // The actor was one of the casualties (not necessarily the target)
+                                if (!casualtiesCanRetaliate) return false;
+                            } else
+                            {
+                                if (!bystandersCanRetaliate) return false;
+                            }
+                        }
+                        if (checkReactionAngle && !isAngleOK(shooter, tacticalActor))
                         {
                             return false;
                         }
+                        // Check that target won't need to move to retaliate
                         ShootAbility defaultShootAbility = returnFireAbility.GetDefaultShootAbility();
                         TacticalAbilityTarget attackActorTarget = defaultShootAbility.GetAttackActorTarget(shooter, AttackType.ReturnFire);
                         if (attackActorTarget == null || !Utl.Equals(attackActorTarget.ShootFromPos, defaultShootAbility.Actor.Pos, 1E-05f))
@@ -131,7 +206,7 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
                         }
                         TacticalActor tacticalActor1 = null;
                         // Prevent friendly fire
-                        if (returnFireAbility.TacticalActor.TacticalPerception.CheckFriendlyFire(returnFireAbility.Weapon, attackActorTarget.ShootFromPos, attackActorTarget, out tacticalActor1, FactionRelation.Neutral | FactionRelation.Friend))
+                        if (checkFriendlyFire && returnFireAbility.TacticalActor.TacticalPerception.CheckFriendlyFire(returnFireAbility.Weapon, attackActorTarget.ShootFromPos, attackActorTarget, out tacticalActor1, FactionRelation.Neutral | FactionRelation.Friend))
                         {
                             return false;
                         }
@@ -139,17 +214,25 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
                         {
                             return false;
                         }
-                        // Check that we have a line of sight between both actors at half perception
+                        // Check that we have a line of sight between both actors at a perception ratio (including stealth stuff)
                         if (!TacticalFactionVision.CheckVisibleLineBetweenActors(returnFireAbility.TacticalActor, returnFireAbility.TacticalActor.Pos, 
                             shooter, false, null, perceptionRatio))
                         {
                             return false;
                         }
                         return true;
-                    }).ToList<ReturnFireAbility>();
+                    }).ToList();
             }
             __result = list;
             return false;
+        }
+
+        private static bool isAngleOK(TacticalActor shooter, TacticalActorBase target)
+        {
+            Vector3 targetForward = target.transform.TransformDirection(Vector3.forward);
+            Vector3 targetToShooter = (shooter.Pos - target.Pos).normalized;
+            float angleCos = Vector3.Dot(targetForward, targetToShooter);
+            return Utl.GreaterThanOrEqualTo(angleCos, reactionAngleCos);
         }
 
         // ******************************************************************************************************************
@@ -185,9 +268,13 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             return new HarmonyMethod(method);
         }
 
-        private static object callPrivate(object instance, string methodName, params object[] parameters)
+        private static object call(object instance, string methodName, params object[] parameters)
         {
-            MethodInfo method = instance.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+            return call(instance, instance.GetType(), methodName, parameters);
+        }
+        private static object call(object instance, Type type, string methodName, params object[] parameters)
+        {
+            MethodInfo method = type.GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             if (method == null)
             {
                 throw new NullReferenceException(string.Concat("No method for name \"", methodName, "\" in \"", instance.GetType(), "\""));
