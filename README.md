@@ -2,13 +2,18 @@
 
 Allows you to change RETURN FIRE the way you prefer it.
 By default return fire is hanged as follows:
-- 120° angle instead of 360°
+- 1 return fire only per enemy
 - everyone can retaliate, not just the target and casualties
+- 120° angle instead of 360°
 
 Be aware that the angle uses the direction the target is watching (like infiltrator's shock perk). Arthrons tend to look slightly on their left so don't focus on how their feet are positioned.
 
 #### use the pp-return-fire-a-la-carte.properties file to configure as you please
 ```
+# Defines how many return fire shots are allowed per "actor"
+# Set to 0 for unlimited
+ShotLimit = 1
+
 # Change the perception ratio that triggers RF
 # In-game value defaults to 0.5 ( half perception )
 # Setting at 0 disables RF
