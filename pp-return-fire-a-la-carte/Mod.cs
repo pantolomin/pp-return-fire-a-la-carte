@@ -1,6 +1,4 @@
-﻿using Base.Core;
-using Base.Entities;
-using Base.Utils.Maths;
+﻿using Base.Utils.Maths;
 using Harmony;
 using PhoenixPoint.Common.Core;
 using PhoenixPoint.Common.Entities;
@@ -8,14 +6,11 @@ using PhoenixPoint.Tactical.Entities;
 using PhoenixPoint.Tactical.Entities.Abilities;
 using PhoenixPoint.Tactical.Entities.Weapons;
 using PhoenixPoint.Tactical.Levels;
-using PhoenixPoint.Tactical.Levels.PathProcessors;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace pantolomin.phoenixPoint.mod.ppReturnFire
