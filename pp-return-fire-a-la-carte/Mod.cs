@@ -113,7 +113,8 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             Mod.Patch(harmonyInstance, typeof(TacticalLevelController), "GetReturnFireAbilities", null, "Pre_GetReturnFireAbilities");
             if (allowReturnToCover)
             {
-                // What to do ?
+                // Transpiling to remove call to ReturnFire from ShootAndWaitRF ?
+                // and add it after "STEP IN" in "FireWeaponAtTargetCrt"
             }
         }
 
