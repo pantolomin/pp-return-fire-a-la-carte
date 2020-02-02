@@ -6,6 +6,7 @@ using PhoenixPoint.Tactical.Entities;
 using PhoenixPoint.Tactical.Entities.Abilities;
 using PhoenixPoint.Tactical.Entities.Weapons;
 using PhoenixPoint.Tactical.Levels;
+using PhoenixPointModLoader;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -15,7 +16,7 @@ using UnityEngine;
 
 namespace pantolomin.phoenixPoint.mod.ppReturnFire
 {
-    public class Mod
+    public class Mod : IPhoenixPointMod
     {
         private const string FILE_NAME = "Mods/pp-return-fire-a-la-carte.properties";
 
@@ -48,7 +49,9 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
         private const string AllowReturnToCover = "AllowReturnToCover";
         private static bool allowReturnToCover;
 
-        public static void Init()
+        public ModLoadPriority Priority => ModLoadPriority.Low;
+
+        public void Initialize()
         {
             Dictionary<string, string> rfProperties = new Dictionary<string, string>();
             try
@@ -102,10 +105,10 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             HarmonyInstance harmonyInstance = HarmonyInstance.Create(typeof(Mod).Namespace);
             if (shotLimit > 0)
             {
-                Mod.Patch(harmonyInstance, typeof(TacticalFaction), "PlayTurnCrt", null, "Pre_PlayTurnCrt");
-                Mod.Patch(harmonyInstance, typeof(TacticalLevelController), "FireWeaponAtTargetCrt", null, "Pre_FireWeaponAtTargetCrt");
+                Patch(harmonyInstance, typeof(TacticalFaction), "PlayTurnCrt", null, "Pre_PlayTurnCrt");
+                Patch(harmonyInstance, typeof(TacticalLevelController), "FireWeaponAtTargetCrt", null, "Pre_FireWeaponAtTargetCrt");
             }
-            Mod.Patch(harmonyInstance, typeof(TacticalLevelController), "GetReturnFireAbilities", null, "Pre_GetReturnFireAbilities");
+            Patch(harmonyInstance, typeof(TacticalLevelController), "GetReturnFireAbilities", null, "Pre_GetReturnFireAbilities");
             if (allowReturnToCover)
             {
                 // Transpiling to remove call to ReturnFire from ShootAndWaitRF ?
@@ -271,7 +274,7 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
         // ******************************************************************************************************************
         // ******************************************************************************************************************
 
-        private static void Patch(HarmonyInstance harmony, Type target, string toPatch, Type[] types, string prefix, string postfix = null)
+        private void Patch(HarmonyInstance harmony, Type target, string toPatch, Type[] types, string prefix, string postfix = null)
         {
             MethodInfo original = types != null
                 ? target.GetMethod(
@@ -284,7 +287,7 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             harmony.Patch(original, ToHarmonyMethod(prefix), ToHarmonyMethod(postfix), null);
         }
 
-        private static HarmonyMethod ToHarmonyMethod(string name)
+        private HarmonyMethod ToHarmonyMethod(string name)
         {
             if (name == null)
             {
@@ -298,11 +301,11 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             return new HarmonyMethod(method);
         }
 
-        private static object call(object instance, string methodName, params object[] parameters)
+        private object call(object instance, string methodName, params object[] parameters)
         {
             return call(instance, instance.GetType(), methodName, parameters);
         }
-        private static object call(object instance, Type type, string methodName, params object[] parameters)
+        private object call(object instance, Type type, string methodName, params object[] parameters)
         {
             MethodInfo method = type.GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             if (method == null)
@@ -312,7 +315,7 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             return method.Invoke(instance, parameters);
         }
 
-        private static object getField(object instance, string fieldName)
+        private object getField(object instance, string fieldName)
         {
             FieldInfo field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             if (field == null)
@@ -326,7 +329,7 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             return field.GetValue(instance);
         }
 
-        private static object getProperty(object instance, string propertyName)
+        private object getProperty(object instance, string propertyName)
         {
             PropertyInfo property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.NonPublic);
             if (property == null)
@@ -340,7 +343,7 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             return property.GetValue(instance);
         }
 
-        private static T getValue<T>(Dictionary<string, string>  properties, string key, Func<string, T> mapper, T defaultValue)
+        private T getValue<T>(Dictionary<string, string>  properties, string key, Func<string, T> mapper, T defaultValue)
         {
             string propertyValue;
             if (properties.TryGetValue(key, out propertyValue))

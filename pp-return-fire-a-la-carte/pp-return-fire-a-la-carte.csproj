@@ -37,6 +37,9 @@
     <Reference Include="Assembly-CSharp">
       <HintPath>..\..\..\..\..\..\Games\Phoenix Point\PhoenixPointWin64_Data\Managed\Assembly-CSharp.dll</HintPath>
     </Reference>
+    <Reference Include="PhoenixPointModLoader">
+      <HintPath>Z:\games\PhoenixPoint\Mods\PhoenixPointModLoader\PhoenixPointModLoader.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
