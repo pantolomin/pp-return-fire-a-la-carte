@@ -92,7 +92,7 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             casualtiesCanRetaliate = getValue(rfProperties, CasualtiesCanRetaliate, bool.Parse, true);
             bystandersCanRetaliate = getValue(rfProperties, BystandersCanRetaliate, bool.Parse, false);
             checkFriendlyFire = getValue(rfProperties, CheckFriendlyFire, bool.Parse, true);
-            int reactionAngle = getValue(rfProperties, ReactionAngle, int.Parse, 360);
+            int reactionAngle = getValue(rfProperties, ReactionAngle, int.Parse, 120);
             if (reactionAngle < 0 || reactionAngle > 360)
             {
                 FileLog.Log(string.Concat("Wrong angle provided for return fire (", reactionAngle, ") - should be between 0 and 360"));
