@@ -22,10 +22,14 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
 
         private const string ShotLimit = "ShotLimit";
         private static int shotLimit;
+        private const string TurretsShotLimit = "TurretsShotLimit";
+        private static int turretsShotLimit;
         private static Dictionary<TacticalActor, int> returnFireCounter = new Dictionary<TacticalActor, int>();
 
         private const string PerceptionRatio = "PerceptionRatio";
         private static float perceptionRatio;
+        private const string TurretsPerceptionRatio = "TurretsPerceptionRatio";
+        private static float turretsPerceptionRatio;
 
         private const string AllowBashRiposte = "AllowBashRiposte";
         private static bool allowBashRiposte;
@@ -43,8 +47,9 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
         private static bool checkFriendlyFire;
 
         private const string ReactionAngle = "ReactionAngle";
-        private static bool checkReactionAngle;
         private static float reactionAngleCos;
+        private const string TurretsReactionAngle = "TurretsReactionAngle";
+        private static float turretsReactionAngleCos;
 
         private const string AllowReturnToCover = "AllowReturnToCover";
         private static bool allowReturnToCover;
@@ -54,38 +59,49 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
         public void Initialize()
         {
             Dictionary<string, string> rfProperties = new Dictionary<string, string>();
-            try
+            if (File.Exists(FILE_NAME))
             {
-                foreach (string row in File.ReadAllLines(FILE_NAME))
+                try
                 {
-                    if (row.StartsWith("#")) continue;
-                    string[] data = row.Split('=');
-                    if (data.Length == 2)
+                    foreach (string row in File.ReadAllLines(FILE_NAME))
                     {
-                        rfProperties.Add(data[0].Trim(), data[1].Trim());
+                        if (row.StartsWith("#")) continue;
+                        string[] data = row.Split('=');
+                        if (data.Length == 2)
+                        {
+                            rfProperties.Add(data[0].Trim(), data[1].Trim());
+                        }
                     }
                 }
-            }
-            catch (FileNotFoundException)
-            {
-                // simply ignore
-            }
-            catch (Exception e)
-            {
-                FileLog.Log(string.Concat("Failed to read the configuration file (", FILE_NAME, "):", e.ToString()));
+                catch (Exception e)
+                {
+                    FileLog.Log(string.Concat("Failed to read the configuration file (", FILE_NAME, "):", e.ToString()));
+                }
             }
 
             shotLimit = getValue(rfProperties, ShotLimit, int.Parse, 1);
             if (shotLimit < 0)
             {
-                FileLog.Log(string.Concat("Wrong limit for shots (", perceptionRatio, ") - should be positive or 0"));
+                FileLog.Log(string.Concat("Wrong limit for shots (", shotLimit, ") - should be positive or 0"));
                 shotLimit = 1;
+            }
+            turretsShotLimit = getValue(rfProperties, TurretsShotLimit, int.Parse, 0);
+            if (turretsShotLimit < 0)
+            {
+                FileLog.Log(string.Concat("Wrong limit for turrets shots (", turretsShotLimit, ") - should be positive or 0"));
+                turretsShotLimit = 0;
             }
             perceptionRatio = getValue(rfProperties, PerceptionRatio, float.Parse, 0.5f);
             if (perceptionRatio < 0f)
             {
                 FileLog.Log(string.Concat("Wrong perception ratio provided (", perceptionRatio, ") - should be positive or 0"));
                 perceptionRatio = 0.5f;
+            }
+            turretsPerceptionRatio = getValue(rfProperties, TurretsPerceptionRatio, float.Parse, 1f);
+            if (turretsPerceptionRatio < 0f)
+            {
+                FileLog.Log(string.Concat("Wrong turrets perception ratio provided (", turretsPerceptionRatio, ") - should be positive or 0"));
+                turretsPerceptionRatio = 1f;
             }
             allowBashRiposte = getValue(rfProperties, AllowBashRiposte, bool.Parse, true);
             targetCanRetaliate = getValue(rfProperties, TargetCanRetaliate, bool.Parse, true);
@@ -96,10 +112,16 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             if (reactionAngle < 0 || reactionAngle > 360)
             {
                 FileLog.Log(string.Concat("Wrong angle provided for return fire (", reactionAngle, ") - should be between 0 and 360"));
-                reactionAngle = 90;
+                reactionAngle = 120;
             }
-            checkReactionAngle = reactionAngle < 360;
-            reactionAngleCos = (float) Math.Cos(reactionAngle * Math.PI / 180d / 2d);
+            reactionAngleCos = (float)Math.Cos(reactionAngle * Math.PI / 180d / 2d);
+            reactionAngle = getValue(rfProperties, TurretsReactionAngle, int.Parse, 360);
+            if (reactionAngle < 0 || reactionAngle > 360)
+            {
+                FileLog.Log(string.Concat("Wrong angle provided for return fire (", reactionAngle, ") - should be between 0 and 360"));
+                reactionAngle = 360;
+            }
+            turretsReactionAngleCos = (float)Math.Cos(reactionAngle * Math.PI / 180d / 2d);
             allowReturnToCover = getValue(rfProperties, AllowReturnToCover, bool.Parse, true);
 
             HarmonyInstance harmonyInstance = HarmonyInstance.Create(typeof(Mod).Namespace);
@@ -185,10 +207,11 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
                     .Where((ReturnFireAbility returnFireAbility) => {
                         TacticalActor tacticalActor = returnFireAbility.TacticalActor;
                         // Check that he has not retaliated too much already
-                        if (shotLimit > 0)
+                        int actorShotLimit = tacticalActor.IsMetallic ? turretsShotLimit : shotLimit;
+                        if (actorShotLimit > 0)
                         {
                             returnFireCounter.TryGetValue(tacticalActor, out var currentCount);
-                            if (currentCount >= shotLimit)
+                            if (currentCount >= actorShotLimit)
                             {
                                 return false;
                             }
@@ -216,7 +239,8 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
                                 if (!bystandersCanRetaliate) return false;
                             }
                         }
-                        if (checkReactionAngle && !isAngleOK(shooter, tacticalActor))
+                        float actorReactionAngleCos = tacticalActor.IsMetallic ? turretsReactionAngleCos : reactionAngleCos;
+                        if (!isAngleOK(shooter, tacticalActor, actorReactionAngleCos))
                         {
                             return false;
                         }
@@ -238,8 +262,9 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
                             return false;
                         }
                         // Check that we have a line of sight between both actors at a perception ratio (including stealth stuff)
+                        float actorPerceptionRatio = tacticalActor.IsMetallic ? turretsPerceptionRatio : perceptionRatio;
                         if (!TacticalFactionVision.CheckVisibleLineBetweenActors(returnFireAbility.TacticalActor, returnFireAbility.TacticalActor.Pos, 
-                            shooter, false, null, perceptionRatio))
+                            shooter, false, null, actorPerceptionRatio))
                         {
                             return false;
                         }
@@ -260,8 +285,12 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             }
         }
 
-        private static bool isAngleOK(TacticalActor shooter, TacticalActorBase target)
+        private static bool isAngleOK(TacticalActor shooter, TacticalActorBase target, float reactionAngleCos)
         {
+            if (reactionAngleCos > 0.99)
+            {
+                return true;
+            }
             Vector3 targetForward = target.transform.TransformDirection(Vector3.forward);
             Vector3 targetToShooter = (shooter.Pos - target.Pos).normalized;
             float angleCos = Vector3.Dot(targetForward, targetToShooter);
