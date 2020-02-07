@@ -27,6 +27,8 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
 
         private const string PerceptionRatio = "PerceptionRatio";
         private static float perceptionRatio;
+        private const string TurretsPerceptionRatio = "TurretsPerceptionRatio";
+        private static float turretsPerceptionRatio;
 
         private const string AllowBashRiposte = "AllowBashRiposte";
         private static bool allowBashRiposte;
@@ -54,25 +56,24 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
         public static void Init()
         {
             Dictionary<string, string> rfProperties = new Dictionary<string, string>();
-            try
+            if (File.Exists(FILE_NAME))
             {
-                foreach (string row in File.ReadAllLines(FILE_NAME))
+                try
                 {
-                    if (row.StartsWith("#")) continue;
-                    string[] data = row.Split('=');
-                    if (data.Length == 2)
+                    foreach (string row in File.ReadAllLines(FILE_NAME))
                     {
-                        rfProperties.Add(data[0].Trim(), data[1].Trim());
+                        if (row.StartsWith("#")) continue;
+                        string[] data = row.Split('=');
+                        if (data.Length == 2)
+                        {
+                            rfProperties.Add(data[0].Trim(), data[1].Trim());
+                        }
                     }
                 }
-            }
-            catch (FileNotFoundException)
-            {
-                // simply ignore
-            }
-            catch (Exception e)
-            {
-                FileLog.Log(string.Concat("Failed to read the configuration file (", FILE_NAME, "):", e.ToString()));
+                catch (Exception e)
+                {
+                    FileLog.Log(string.Concat("Failed to read the configuration file (", FILE_NAME, "):", e.ToString()));
+                }
             }
 
             shotLimit = getValue(rfProperties, ShotLimit, int.Parse, 1);
@@ -92,6 +93,12 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
             {
                 FileLog.Log(string.Concat("Wrong perception ratio provided (", perceptionRatio, ") - should be positive or 0"));
                 perceptionRatio = 0.5f;
+            }
+            turretsPerceptionRatio = getValue(rfProperties, TurretsPerceptionRatio, float.Parse, 1f);
+            if (turretsPerceptionRatio < 0f)
+            {
+                FileLog.Log(string.Concat("Wrong turrets perception ratio provided (", turretsPerceptionRatio, ") - should be positive or 0"));
+                turretsPerceptionRatio = 1f;
             }
             allowBashRiposte = getValue(rfProperties, AllowBashRiposte, bool.Parse, true);
             targetCanRetaliate = getValue(rfProperties, TargetCanRetaliate, bool.Parse, true);
@@ -252,8 +259,9 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
                             return false;
                         }
                         // Check that we have a line of sight between both actors at a perception ratio (including stealth stuff)
+                        float actorPerceptionRatio = tacticalActor.IsMetallic ? turretsPerceptionRatio : perceptionRatio;
                         if (!TacticalFactionVision.CheckVisibleLineBetweenActors(returnFireAbility.TacticalActor, returnFireAbility.TacticalActor.Pos, 
-                            shooter, false, null, perceptionRatio))
+                            shooter, false, null, actorPerceptionRatio))
                         {
                             return false;
                         }
