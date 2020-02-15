@@ -18,7 +18,7 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
 {
     public class Mod : IPhoenixPointMod
     {
-        private const string FILE_NAME = "Mods/pp-return-fire-a-la-carte.properties";
+        private const string FILE_NAME = "pp-return-fire-a-la-carte.properties";
 
         private const string ShotLimit = "ShotLimit";
         private static int shotLimit;
@@ -58,12 +58,17 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
 
         public void Initialize()
         {
+            string manifestDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)
+                ?? throw new InvalidOperationException("Could not determine operating directory. Is your folder structure correct? " +
+                "Try verifying game files in the Epic Games Launcher, if you're using it.");
+
             Dictionary<string, string> rfProperties = new Dictionary<string, string>();
-            if (File.Exists(FILE_NAME))
+            string filePath = manifestDirectory + "/" + FILE_NAME;
+            if (File.Exists(filePath))
             {
                 try
                 {
-                    foreach (string row in File.ReadAllLines(FILE_NAME))
+                    foreach (string row in File.ReadAllLines(filePath))
                     {
                         if (row.StartsWith("#")) continue;
                         string[] data = row.Split('=');
@@ -75,7 +80,7 @@ namespace pantolomin.phoenixPoint.mod.ppReturnFire
                 }
                 catch (Exception e)
                 {
-                    FileLog.Log(string.Concat("Failed to read the configuration file (", FILE_NAME, "):", e.ToString()));
+                    FileLog.Log("Failed to read the configuration file (" + filePath + "): " + e.ToString());
                 }
             }
 
